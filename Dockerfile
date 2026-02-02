@@ -1,7 +1,7 @@
 # Dockerfile
 FROM python:3.11-slim
 
-# Встановлення системних залежностей для Chrome
+# 1. Встановлення системних залежностей
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -25,38 +25,33 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     xdg-utils \
     lsb-release \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor | tee /usr/share/keyrings/google-chrome.gpg > /dev/null \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Встановлення ChromeDriver
+# 2. Встановлення ChromeDriver
 RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d'.' -f1) \
+    && echo "Chrome version: $CHROME_VERSION" \
     && CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION") \
+    && echo "ChromeDriver version: $CHROMEDRIVER_VERSION" \
     && wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip" \
     && unzip /tmp/chromedriver.zip -d /tmp/ \
     && mv /tmp/chromedriver /usr/local/bin/ \
     && chmod +x /usr/local/bin/chromedriver \
-    && rm -rf /tmp/chromedriver.zip
+    && rm -rf /tmp/chromedriver.zip /tmp/chromedriver_linux64
 
-# Створення робочої директорії
+# 3. Налаштування робочої директорії
 WORKDIR /app
 
-# Копіювання залежностей
+# 4. Копіювання та встановлення Python залежностей
 COPY requirements.txt .
-
-# Встановлення Python залежностей
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Копіювання коду
+# 5. Копіювання всіх файлів проекту
 COPY . .
 
-# Створення non-root користувача для безпеки
-RUN useradd -m -u 1000 user \
-    && chown -R user:user /app
-USER user
-
-# Команда запуску
+# 6. Команда запуску
 CMD ["python", "main.py"]
