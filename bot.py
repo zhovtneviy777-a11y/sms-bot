@@ -89,7 +89,7 @@ SERVICES_CONFIG = {
 
 # ===== SELENIUM УТІЛІТИ =====
 def create_driver():
-    """Створення драйвера з налаштуваннями для Render"""
+    """Створення драйвера з налаштуваннями для Railway"""
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
@@ -100,11 +100,14 @@ def create_driver():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
-    # Для Render
-    if os.environ.get('CHROME_BIN'):
-        chrome_options.binary_location = os.environ.get('CHROME_BIN')
+    # Для Railway (Chromium вже встановлений)
+    chrome_options.binary_location = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
     
-    driver = webdriver.Chrome(options=chrome_options)
+    # Використовуємо ChromeDriver з системи
+    driver = webdriver.Chrome(
+        executable_path=os.environ.get('CHROMEDRIVER_PATH', '/usr/bin/chromedriver'),
+        options=chrome_options
+    )
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     return driver
 
@@ -567,7 +570,13 @@ def init_database():
     """Ініціалізація бази даних"""
     with app.app_context():
         db.create_all()
-        logger.info("База даних ініціалізована")
+        logger.info("✅ База даних ініціалізована")
+
+# ===== ГЕЛС ЧЕК (обов'язковий для Railway) =====
+@app.route('/health')
+def health_check():
+    """Health check для Railway"""
+    return jsonify({"status": "healthy", "service": "sms-bot"})
 
 if __name__ == "__main__":
     # Ініціалізуємо базу даних
@@ -575,5 +584,10 @@ if __name__ == "__main__":
     
     # Запускаємо Flask
     port = int(os.environ.get("PORT", 5000))
-    logger.info(f"Запуск Flask на порті {port}")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    logger.info(f"🚀 Запуск Flask на порті {port}")
+    
+    # Важливо для Railway
+    if os.environ.get('RAILWAY_ENVIRONMENT'):
+        logger.info("🔧 Railway environment detected")
+    
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
