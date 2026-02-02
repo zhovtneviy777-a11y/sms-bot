@@ -1,0 +1,6 @@
+aiogram==3.x
+aiohttp==3.9.0
+selenium==4.15.0
+webdriver-manager==4.0.1
+asyncio
+python-dotenv==1.0.0
