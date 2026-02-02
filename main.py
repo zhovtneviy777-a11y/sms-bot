@@ -16,7 +16,7 @@ async def healthcheck(request):
     return web.Response(text="OK", status=200)
 
 async def start_web_server():
-    """Запуск веб-сервера на порті 8080"""
+    """Запуск веб-сервера"""
     app = web.Application()
     app.router.add_get('/', healthcheck)
     app.router.add_get('/health', healthcheck)
@@ -25,7 +25,7 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', 8080)
     await site.start()
-    logger.info("🌐 Web server started on port 8080 for healthcheck")
+    logger.info("✅ Web server started on port 8080")
     return runner
 
 # ===== TELEGRAM БОТ =====
@@ -39,27 +39,30 @@ dp = Dispatcher()
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("✅ Бот працює! Всі системи в нормі.")
+    await message.answer("🤖 Бот працює! Введіть /phone для початку.")
 
-@dp.message(Command("test"))
-async def cmd_test(message: types.Message):
-    await message.answer("🔄 Тестова команда працює!")
+@dp.message(Command("phone"))
+async def cmd_phone(message: types.Message):
+    await message.answer("📱 Функція введення номеру готова до роботи!")
+
+@dp.message(Command("status"))
+async def cmd_status(message: types.Message):
+    await message.answer("✅ Бот активний. Всі системи працюють.")
 
 async def start_bot():
     """Запуск Telegram бота"""
-    logger.info("🤖 Starting Telegram bot...")
+    logger.info("🚀 Starting Telegram bot...")
     await dp.start_polling(bot)
 
 async def main():
     """Основна функція"""
-    # Запускаємо веб-сервер для healthcheck
+    # Запускаємо веб-сервер
     web_runner = await start_web_server()
     
     # Запускаємо бота
     bot_task = asyncio.create_task(start_bot())
     
-    logger.info("🚀 Application started successfully!")
-    logger.info("✅ Healthcheck available at http://0.0.0.0:8080/health")
+    logger.info("🎉 Application fully started!")
     
     try:
         # Чекаємо поки бот працює
@@ -69,9 +72,10 @@ async def main():
     finally:
         # Зупиняємо веб-сервер
         await web_runner.cleanup()
+        logger.info("👋 Application stopped")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("⏹️ Application stopped by user")
+        logger.info("⏹️ Stopped by user")
