@@ -1,7 +1,7 @@
-# Dockerfile - ультра спрощений
+# Dockerfile
 FROM python:3.11-slim
 
-# 1. Тільки базові залежності
+# 1. Chrome
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
