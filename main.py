@@ -1,21 +1,26 @@
-# main.py - проста тестова версія
+# main.py - найпростіший тест
 import os
 import logging
+import time
 
-# Налаштування логування
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Перевірка змінних
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-logger.info(f"BOT_TOKEN exists: {bool(BOT_TOKEN)}")
-
-# Просто працюємо
-if __name__ == "__main__":
-    logger.info("🚀 Application started successfully!")
-    print("✅ Bot is running!")
-    # Тримаємо застосунок активним
-    import time
+def main():
+    logger.info("🚀 Bot starting...")
+    
+    # Перевіряємо токен
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        logger.error("❌ BOT_TOKEN not found!")
+        return
+    
+    logger.info(f"✅ BOT_TOKEN found: {token[:10]}...")
+    
+    # Просто працюємо
     while True:
-        time.sleep(10)
-        logger.info("Still running...")
+        logger.info("🤖 Bot is alive and running")
+        time.sleep(60)  # Чекаємо 1 хвилину
+
+if __name__ == "__main__":
+    main()
