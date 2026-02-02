@@ -1,43 +1,33 @@
 # Dockerfile
 FROM python:3.11-slim
 
-# 1. Встановлюємо системні залежності
-RUN apt-get update && apt-get install -y \
-    wget \
-    curl \
-    gnupg \
-    unzip \
-    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
+# 1. Chrome
+RUN apt-get update && apt-get install -y wget gnupg \
+    && wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && apt-get install -y /tmp/chrome.deb \
+    && rm /tmp/chrome.deb \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Встановлюємо ChromeDriver
-RUN CHROMEDRIVER_VERSION=$(curl -s https://chromedriver.storage.googleapis.com/LATEST_RELEASE) \
-    && wget -q -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip" \
+# 2. ChromeDriver
+RUN wget -q -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-testing-public/120.0.6099.109/linux64/chromedriver-linux64.zip \
     && unzip /tmp/chromedriver.zip -d /tmp/ \
-    && mv /tmp/chromedriver /usr/local/bin/chromedriver \
+    && mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/ \
     && chmod +x /usr/local/bin/chromedriver \
     && rm -rf /tmp/chromedriver.zip
 
-# 3. Робоча директорія
 WORKDIR /app
 
-# 4. Копіюємо requirements та встановлюємо ПОСТУПОВО
+# 3. Python залежності
 COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Спершу встановлюємо pip та базові залежності
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-
-# Потім встановлюємо залежності по одній
-RUN pip install --no-cache-dir aiogram==3.5.0 && \
-    pip install --no-cache-dir aiohttp==3.8.6 && \
-    pip install --no-cache-dir selenium==4.15.2 && \
-    pip install --no-cache-dir python-dotenv==1.0.0
-
-# 5. Копіюємо код
+# 4. Копіюємо код
 COPY . .
 
-# 6. Запускаємо бота
+# 5. Healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import socket; socket.create_connection(('localhost', 8080), timeout=2)" || exit 1
+
+# 6. Запуск
 CMD ["python", "main.py"]
