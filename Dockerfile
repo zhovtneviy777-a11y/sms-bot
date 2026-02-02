@@ -25,4 +25,5 @@ ENV PYTHONUNBUFFERED=1
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "bot:app"]
+# Використовуємо змінну PORT від Railway
+CMD gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 bot:app
