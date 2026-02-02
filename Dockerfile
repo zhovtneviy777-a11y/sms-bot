@@ -12,8 +12,12 @@ RUN wget -O /tmp/chromedriver.zip https://chromedriver.storage.googleapis.com/$(
     && rm /tmp/chromedriver.zip
 
 WORKDIR /app
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
 COPY . .
+
 EXPOSE 5000
+
 CMD ["python", "bot.py"]
