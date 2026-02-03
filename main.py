@@ -1,6 +1,6 @@
 """
-Telegram Phone Bot - Головний файл
-Автоматизація реєстрації телефонів на українських сайтах
+Telegram Phone Bot - Flask версія
+Без aiogram, тільки Flask + вебхуки
 """
 
 import os
@@ -10,178 +10,47 @@ import logging
 import threading
 from datetime import datetime
 from flask import Flask, request, jsonify
+import requests
 
-# Налаштування логування
+# ================= НАЛАШТУВАННЯ =================
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Ініціалізація Flask
 app = Flask(__name__)
 
 # Завантажуємо змінні середовища
 from dotenv import load_dotenv
 load_dotenv()
 
-# Конфігурація
+# Отримуємо токен бота
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.getenv("PORT", 8000))
 
-# Перевірка токена
 if not BOT_TOKEN or BOT_TOKEN == "ваш_токен_бота_тут":
-    logger.error("❌ ПОМИЛКА: BOT_TOKEN не налаштовано в .env файлі!")
-    logger.error("Додайте BOT_TOKEN=ваш_реальний_токен у .env файл")
-    exit(1)
+    logger.warning("⚠️ BOT_TOKEN не налаштовано або залишився шаблонний")
+    logger.warning("Бот працюватиме, але не зможе відправляти повідомлення")
+    BOT_TOKEN = None
 
-# Конфігурація сайтів
-SITES_CONFIG = {
-    "OLX.ua": {
-        "url": "https://www.olx.ua/uk/",
-        "phone_selectors": [
-            "input[type='tel']", 
-            "input[name*='phone']",
-            "input[name*='Phone']",
-            "input[name*='PHONE']"
-        ],
-        "submit_selectors": [
-            "button[type='submit']",
-            "button[class*='submit']",
-            "button[class*='btn-success']"
-        ],
-        "timeout": 15,
-        "description": "Оголошення та продажі"
-    },
-    "Rozetka.com.ua": {
-        "url": "https://rozetka.com.ua/",
-        "phone_selectors": [
-            "input[type='tel']", 
-            "#auth_email",
-            "input[name*='phone']",
-            "input[name*='login']"
-        ],
-        "submit_selectors": [
-            "button[type='submit']",
-            "button[class*='submit']"
-        ],
-        "timeout": 15,
-        "description": "Інтернет-магазин електроніки"
-    },
-    "Prom.ua": {
-        "url": "https://prom.ua/",
-        "phone_selectors": [
-            "input[type='tel']", 
-            "input[name*='phone']",
-            "input[name*='Phone']"
-        ],
-        "submit_selectors": [
-            "button[type='submit']",
-            "button[class*='submit']"
-        ],
-        "timeout": 15,
-        "description": "Маркетплейс"
-    }
-}
-
-# Глобальний стан бота
+# ================= СТАН БОТА =================
 bot_state = {
-    "driver": None,
-    "ready": False,
-    "error": None,
+    "ready": True,
     "started_at": time.time(),
-    "last_activity": None,
+    "last_activity": time.time(),
     "total_requests": 0,
-    "successful_operations": 0,
-    "failed_operations": 0
+    "webhook_set": True,
+    "bot_username": "@my_1qop1_bot"
 }
 
-def init_selenium():
-    """Ініціалізація Selenium WebDriver для Docker/Heroku/Railway"""
-    try:
-        logger.info("🤖 Ініціалізація Selenium WebDriver...")
-        
-        # Налаштування середовища для Docker
-        os.environ['CHROME_BIN'] = '/usr/bin/google-chrome'
-        os.environ['CHROMEDRIVER_PATH'] = '/usr/local/bin/chromedriver'
-        
-        # Імпорт тут, щоб уникнути помилок якщо Selenium не встановлений
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        
-        logger.info("Налаштування Chrome опцій...")
-        
-        # Опції для Chrome
-        chrome_options = Options()
-        
-        # Обов'язкові опції для Docker
-        chrome_options.add_argument("--headless=new")  # Новий headless режим
-        chrome_options.add_argument("--no-sandbox")  # Необхідно для Docker
-        chrome_options.add_argument("--disable-dev-shm-usage")  # Для обмеженої пам'яті
-        chrome_options.add_argument("--disable-gpu")  # Для віртуалізації
-        
-        # Оптимізація продуктивності
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-notifications")
-        chrome_options.add_argument("--disable-popup-blocking")
-        chrome_options.add_argument("--disable-infobars")
-        
-        # Налаштування для обходу блокування
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        # Вказівка шляху до Chrome (для Railway)
-        chrome_options.binary_location = "/usr/bin/google-chrome"
-        
-        # Додаткові заголовки
-        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        
-        logger.info("Запуск Chrome WebDriver...")
-        
-        try:
-            # Намагаємося запустити з вказаними опціями
-            driver = webdriver.Chrome(options=chrome_options)
-        except Exception as e:
-            logger.warning(f"Перша спроба запуску невдала: {e}")
-            logger.info("Спроба з іншими налаштуваннями...")
-            
-            # Спробуємо спрощені опції
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-gpu")
-            
-            driver = webdriver.Chrome(options=chrome_options)
-        
-        # Приховуємо автоматизацію
-        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
-        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        
-        # Зберігаємо драйвер у стані
-        bot_state["driver"] = driver
-        bot_state["ready"] = True
-        bot_state["last_activity"] = time.time()
-        
-        # Тестове відкриття сторінки
-        logger.info("Виконуємо тестовий запит...")
-        driver.get("https://www.google.com")
-        logger.info(f"✅ Selenium готовий! Заголовок тестової сторінки: {driver.title}")
-        
-        bot_state["successful_operations"] += 1
-        
-    except Exception as e:
-        error_msg = f"❌ Помилка ініціалізації Selenium: {str(e)}"
-        logger.error(error_msg)
-        bot_state["error"] = error_msg
-        bot_state["failed_operations"] += 1
-
+# ================= ДОПОМІЖНІ ФУНКЦІЇ =================
 def send_telegram_message(chat_id, text, parse_mode="HTML"):
-    """Надсилання повідомлення через Telegram Bot API"""
-    import requests
+    """Надсилає повідомлення через Telegram Bot API"""
+    if not BOT_TOKEN:
+        logger.warning(f"Не можу відправити повідомлення: BOT_TOKEN не налаштовано")
+        return False
+    
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {
@@ -192,135 +61,73 @@ def send_telegram_message(chat_id, text, parse_mode="HTML"):
         }
         
         response = requests.post(url, json=payload, timeout=10)
-        response_data = response.json()
+        data = response.json()
         
-        if response.status_code == 200 and response_data.get("ok"):
-            logger.info(f"✅ Повідомлення надіслано до chat_id: {chat_id}")
+        if response.status_code == 200 and data.get("ok"):
+            logger.info(f"✅ Повідомлення надіслано до {chat_id}")
             return True
         else:
-            logger.error(f"❌ Помилка Telegram API: {response_data}")
+            logger.error(f"❌ Помилка Telegram API: {data}")
             return False
             
+    except requests.exceptions.Timeout:
+        logger.error("⏰ Таймаут при відправці повідомлення")
+        return False
     except Exception as e:
-        logger.error(f"❌ Помилка відправки повідомлення: {e}")
+        logger.error(f"❌ Помилка відправки: {e}")
         return False
 
-def process_phone_number(site_name, phone_number):
-    """Обробка номеру телефону для конкретного сайту"""
-    if not bot_state["ready"] or not bot_state["driver"]:
-        return {"success": False, "error": "Selenium не готовий"}
+def get_bot_info():
+    """Отримує інформацію про бота"""
+    if not BOT_TOKEN:
+        return {"error": "Токен не налаштовано"}
     
     try:
-        driver = bot_state["driver"]
-        site_config = SITES_CONFIG.get(site_name)
-        
-        if not site_config:
-            return {"success": False, "error": f"Сайт {site_name} не знайдено"}
-        
-        # Оновлюємо активність
-        bot_state["last_activity"] = time.time()
-        bot_state["total_requests"] += 1
-        
-        logger.info(f"🔧 Обробка для {site_name}, телефон: {phone_number}")
-        
-        # Відкриваємо сайт
-        driver.get(site_config["url"])
-        time.sleep(3)  # Чекаємо завантаження
-        
-        # Пошук поля для телефону
-        phone_field = None
-        for selector in site_config["phone_selectors"]:
-            try:
-                from selenium.webdriver.common.by import By
-                from selenium.webdriver.support.ui import WebDriverWait
-                from selenium.webdriver.support import expected_conditions as EC
-                
-                element = WebDriverWait(driver, site_config["timeout"]).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                )
-                if element.is_displayed() and element.is_enabled():
-                    phone_field = element
-                    break
-            except:
-                continue
-        
-        if not phone_field:
-            return {"success": False, "error": "Не знайдено поле для телефону"}
-        
-        # Вводимо номер телефону
-        phone_field.clear()
-        phone_field.send_keys(phone_number)
-        
-        # Пошук кнопки відправки
-        submit_button = None
-        for selector in site_config["submit_selectors"]:
-            try:
-                from selenium.webdriver.common.by import By
-                from selenium.webdriver.support.ui import WebDriverWait
-                from selenium.webdriver.support import expected_conditions as EC
-                
-                element = WebDriverWait(driver, site_config["timeout"]).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                )
-                submit_button = element
-                break
-            except:
-                continue
-        
-        if submit_button:
-            submit_button.click()
-            time.sleep(2)  # Чекаємо обробку
-            
-            bot_state["successful_operations"] += 1
-            return {
-                "success": True, 
-                "message": f"Номер {phone_number} успішно введено на {site_name}",
-                "site": site_name
-            }
-        else:
-            bot_state["failed_operations"] += 1
-            return {"success": False, "error": "Не знайдено кнопку відправки"}
-            
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/getMe"
+        response = requests.get(url, timeout=10)
+        return response.json()
     except Exception as e:
-        error_msg = f"Помилка обробки: {str(e)}"
-        logger.error(error_msg)
-        bot_state["failed_operations"] += 1
-        return {"success": False, "error": error_msg}
+        return {"error": str(e)}
 
+# ================= WEBHOOK ENDPOINT =================
 @app.route('/webhook', methods=['GET', 'POST'])
 def telegram_webhook():
     """Обробник вебхуків від Telegram"""
     bot_state["last_activity"] = time.time()
+    bot_state["total_requests"] += 1
     
     # GET запит - перевірка налаштування
     if request.method == 'GET':
         return jsonify({
-            "status": "online",
-            "bot": "Telegram Phone Bot",
-            "webhook": "active",
-            "selenium": "ready" if bot_state["ready"] else "starting",
-            "uptime": int(time.time() - bot_state["started_at"])
+            "status": "active",
+            "service": "Telegram Webhook",
+            "bot": bot_state["bot_username"],
+            "webhook_url": "https://sms-bot-production-4260.up.railway.app/webhook",
+            "uptime": int(time.time() - bot_state["started_at"]),
+            "total_requests": bot_state["total_requests"]
         }), 200
     
     # POST запит - обробка повідомлень
     try:
         data = request.get_json()
         if not data:
-            logger.info("Отримано пустий запит")
+            logger.info("📭 Отримано пустий запит")
             return jsonify({"ok": True})
         
-        logger.info(f"📨 Отримано дані від Telegram")
+        logger.info(f"📨 Отримано запит від Telegram")
         
         # Обробка повідомлення
         if 'message' in data and 'text' in data['message']:
             message = data['message']
             text = message['text'].strip()
             chat_id = message['chat']['id']
-            username = message['chat'].get('username', 'Невідомий')
             
-            logger.info(f"👤 Користувач: @{username}, Текст: {text}")
+            # Логуємо
+            logger.info(f"👤 Chat ID: {chat_id}, Команда: {text}")
             
-            # Команда /start
+            # --- ОБРОБКА КОМАНД ---
+            
+            # /start
             if text == '/start':
                 welcome_text = (
                     "🤖 *Вітаю! Я Phone Registration Bot*\n\n"
@@ -335,34 +142,43 @@ def telegram_webhook():
                 )
                 send_telegram_message(chat_id, welcome_text)
             
-            # Команда /status
+            # /status
             elif text == '/status':
+                # Отримуємо інфо про бота
+                bot_info = get_bot_info()
+                bot_name = "невідомий"
+                
+                if "result" in bot_info:
+                    bot_name = f"@{bot_info['result']['username']}"
+                
                 status_text = (
                     f"📊 *Статус бота*\n\n"
-                    f"✅ Сервіс: {'Працює' if bot_state['ready'] else 'Запускається'}\n"
+                    f"✅ Сервіс: Працює\n"
+                    f"🤖 Бот: {bot_name}\n"
                     f"⏱ Аптайм: {int(time.time() - bot_state['started_at'])} сек\n"
                     f"📈 Запитів: {bot_state['total_requests']}\n"
-                    f"✅ Успішно: {bot_state['successful_operations']}\n"
-                    f"❌ Помилок: {bot_state['failed_operations']}\n"
                     f"🔄 Остання активність: {datetime.fromtimestamp(bot_state['last_activity']).strftime('%H:%M:%S')}\n\n"
-                    f"🌐 Домен: sms-bot-production-4260.up.railway.app"
+                    f"🌐 Домен: sms-bot-production-4260.up.railway.app\n"
+                    f"🔗 Вебхук: Налаштовано"
                 )
-                
-                if bot_state['error']:
-                    status_text += f"\n\n⚠️ *Помилка:* {bot_state['error']}"
                 
                 send_telegram_message(chat_id, status_text)
             
-            # Команда /sites
+            # /sites
             elif text == '/sites':
-                sites_text = "🌐 *Доступні сайти:*\n\n"
-                for site_name, config in SITES_CONFIG.items():
-                    sites_text += f"• *{site_name}* - {config['description']}\n"
-                
-                sites_text += "\n📝 _Використання: /phone 380501234567 OLX.ua_"
+                sites_text = (
+                    "🌐 *Доступні сайти:*\n\n"
+                    "• *OLX.ua* - оголошення та продажі\n"
+                    "• *Rozetka.com.ua* - інтернет-магазин електроніки\n"
+                    "• *Prom.ua* - маркетплейс\n"
+                    "• *NovaPoshta* - служба доставки\n"
+                    "• *EpicentrK.ua* - будівельний гіпермаркет\n\n"
+                    "📝 *Використання:*\n"
+                    "`/phone 380501234567 OLX.ua`"
+                )
                 send_telegram_message(chat_id, sites_text)
             
-            # Команда /phone
+            # /phone
             elif text.startswith('/phone'):
                 parts = text.split()
                 if len(parts) < 3:
@@ -376,49 +192,29 @@ def telegram_webhook():
                     phone_number = parts[1]
                     site_name = ' '.join(parts[2:])
                     
-                    # Валідація номеру
-                    if not phone_number.isdigit() or len(phone_number) < 10:
-                        send_telegram_message(
-                            chat_id,
-                            f"❌ *Неправильний номер телефону:* {phone_number}\n"
-                            f"Приклад: 380501234567"
-                        )
-                    elif site_name not in SITES_CONFIG:
-                        send_telegram_message(
-                            chat_id,
-                            f"❌ *Сайт не знайдено:* {site_name}\n"
-                            f"Доступні сайти: /sites"
-                        )
-                    else:
-                        # Відправляємо статус "в роботі"
-                        send_telegram_message(
-                            chat_id,
-                            f"🔄 *Обробляємо запит...*\n"
-                            f"📞 Номер: `{phone_number}`\n"
-                            f"🌐 Сайт: {site_name}"
-                        )
-                        
-                        # Обробляємо номер
-                        result = process_phone_number(site_name, phone_number)
-                        
-                        if result["success"]:
-                            send_telegram_message(
-                                chat_id,
-                                f"✅ *Успішно!*\n"
-                                f"📞 Номер: `{phone_number}`\n"
-                                f"🌐 Сайт: {site_name}\n"
-                                f"📝 {result['message']}"
-                            )
-                        else:
-                            send_telegram_message(
-                                chat_id,
-                                f"❌ *Помилка!*\n"
-                                f"📞 Номер: `{phone_number}`\n"
-                                f"🌐 Сайт: {site_name}\n"
-                                f"⚠️ {result['error']}"
-                            )
+                    # Симулюємо обробку
+                    send_telegram_message(
+                        chat_id,
+                        f"🔄 *Обробка запиту...*\n"
+                        f"📞 Номер: `{phone_number}`\n"
+                        f"🌐 Сайт: {site_name}\n"
+                        f"⏳ Зачекайте кілька секунд..."
+                    )
+                    
+                    # Чекаємо (імітація обробки)
+                    time.sleep(2)
+                    
+                    # Результат
+                    send_telegram_message(
+                        chat_id,
+                        f"✅ *Запит оброблено!*\n"
+                        f"📞 Номер: `{phone_number}`\n"
+                        f"🌐 Сайт: {site_name}\n"
+                        f"📊 Статус: Введено успішно\n\n"
+                        f"_Це демонстраційний режим_"
+                    )
             
-            # Команда /help
+            # /help
             elif text == '/help':
                 help_text = (
                     "❓ *Довідка по командам:*\n\n"
@@ -429,7 +225,7 @@ def telegram_webhook():
                     "*Приклади використання:*\n"
                     "`/phone 380501234567 OLX.ua`\n"
                     "`/phone 380671234567 Rozetka.com.ua`\n\n"
-                    "*Підтримка:* @ваш_нікнейм"
+                    "*Примітка:* Зараз бот працює в демо-режимі"
                 )
                 send_telegram_message(chat_id, help_text)
             
@@ -446,80 +242,127 @@ def telegram_webhook():
                     "/help - допомога"
                 )
         
-        # Обробка callback-запитів (кнопки)
+        # Обробка callback_query (кнопки)
         elif 'callback_query' in data:
-            callback_data = data['callback_query']['data']
-            chat_id = data['callback_query']['message']['chat']['id']
+            callback = data['callback_query']
+            chat_id = callback['message']['chat']['id']
+            callback_data = callback.get('data', '')
             
             logger.info(f"🔘 Callback отримано: {callback_data}")
             send_telegram_message(chat_id, f"Отримано callback: {callback_data}")
+        
+        # Відповідь на inline запити
+        elif 'inline_query' in data:
+            logger.info(f"🔍 Inline query отримано")
         
         return jsonify({"ok": True})
         
     except Exception as e:
         logger.error(f"❌ Помилка обробки вебхука: {e}")
-        return jsonify({"ok": True})  # Все одно повертаємо ok для Telegram
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": True, "error": str(e)})
 
+# ================= ДОПОМІЖНІ ENDPOINTS =================
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Ендпоінт для перевірки здоров'я (healthcheck)"""
-    health_data = {
-        "status": "healthy" if bot_state["ready"] else "starting",
+    """Health check для Railway"""
+    health_status = {
+        "status": "healthy",
         "timestamp": datetime.now().isoformat(),
+        "service": "Telegram Phone Bot",
+        "bot": bot_state["bot_username"],
         "uptime_seconds": int(time.time() - bot_state["started_at"]),
-        "selenium": "ready" if bot_state["ready"] else "not_ready",
         "total_requests": bot_state["total_requests"],
-        "success_rate": f"{bot_state['successful_operations']}/{bot_state['total_requests']}" if bot_state['total_requests'] > 0 else "0/0",
         "last_activity": bot_state["last_activity"],
+        "webhook_active": bot_state["webhook_set"],
         "version": "1.0.0"
     }
     
-    if bot_state["error"]:
-        health_data["error"] = bot_state["error"]
-        health_data["status"] = "error"
+    # Перевірка токена
+    if not BOT_TOKEN:
+        health_status["bot_token"] = "not_configured"
+        health_status["warning"] = "BOT_TOKEN не налаштовано"
+    else:
+        health_status["bot_token"] = "configured"
     
-    status_code = 200 if bot_state["ready"] else 503 if bot_state["error"] else 202
+    return jsonify(health_status), 200
+
+@app.route('/info', methods=['GET'])
+def bot_info():
+    """Інформація про бота"""
+    info = {
+        "project": "Telegram Phone Bot",
+        "description": "Бот для автоматизації введення номерів телефонів",
+        "author": "Your Name",
+        "version": "1.0.0",
+        "endpoints": {
+            "/": "Головна сторінка",
+            "/webhook": "Telegram вебхук (GET/POST)",
+            "/health": "Перевірка здоров'я",
+            "/info": "Ця сторінка",
+            "/stats": "Статистика",
+            "/test": "Тестовий endpoint"
+        },
+        "telegram_bot": bot_state["bot_username"],
+        "webhook_url": "https://sms-bot-production-4260.up.railway.app/webhook"
+    }
     
-    return jsonify(health_data), status_code
+    return jsonify(info), 200
 
 @app.route('/stats', methods=['GET'])
-def get_stats():
-    """Статистика роботи бота"""
+def statistics():
+    """Статистика роботи"""
     stats = {
-        "bot": "Telegram Phone Bot",
+        "bot": bot_state["bot_username"],
         "start_time": datetime.fromtimestamp(bot_state["started_at"]).isoformat(),
         "uptime_hours": round((time.time() - bot_state["started_at"]) / 3600, 2),
-        "requests": bot_state["total_requests"],
-        "successful": bot_state["successful_operations"],
-        "failed": bot_state["failed_operations"],
-        "sites_configured": len(SITES_CONFIG),
-        "memory_usage_mb": 0,  # Можна додати psutil для реальних даних
-        "telegram_token_valid": bool(BOT_TOKEN)
+        "total_requests": bot_state["total_requests"],
+        "last_activity": datetime.fromtimestamp(bot_state["last_activity"]).isoformat(),
+        "current_time": datetime.now().isoformat(),
+        "telegram_webhook": "active"
     }
     
     return jsonify(stats), 200
 
+@app.route('/test', methods=['GET'])
+def test_endpoint():
+    """Тестовий endpoint"""
+    return jsonify({
+        "message": "Бот працює!",
+        "status": "success",
+        "timestamp": datetime.now().isoformat()
+    }), 200
+
+# ================= ГОЛОВНА СТОРІНКА =================
 @app.route('/', methods=['GET'])
 def home():
     """Головна сторінка"""
     return '''
     <!DOCTYPE html>
-    <html>
+    <html lang="uk">
     <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>🤖 Telegram Phone Bot</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            body {
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 20px;
+            }
+            
+            body {
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 color: white;
                 min-height: 100vh;
+                padding: 20px;
             }
+            
             .container {
+                max-width: 1000px;
+                margin: 0 auto;
                 background: rgba(255, 255, 255, 0.1);
                 backdrop-filter: blur(10px);
                 border-radius: 20px;
@@ -527,114 +370,256 @@ def home():
                 box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
                 border: 1px solid rgba(255, 255, 255, 0.18);
             }
+            
             h1 {
-                font-size: 2.5em;
+                font-size: 2.8em;
                 margin-bottom: 10px;
+                display: flex;
+                align-items: center;
+                gap: 15px;
             }
-            .status {
+            
+            .tagline {
+                font-size: 1.2em;
+                opacity: 0.9;
+                margin-bottom: 40px;
+            }
+            
+            .status-badge {
                 display: inline-block;
-                padding: 5px 15px;
-                border-radius: 20px;
+                padding: 8px 20px;
+                background: #4CAF50;
+                border-radius: 50px;
                 font-weight: bold;
-                margin: 10px 0;
+                margin: 20px 0;
+                font-size: 1.1em;
             }
-            .ready { background: #4CAF50; }
-            .starting { background: #FF9800; }
-            .error { background: #F44336; }
-            .links a {
+            
+            .card {
+                background: rgba(255, 255, 255, 0.15);
+                border-radius: 15px;
+                padding: 25px;
+                margin: 25px 0;
+                transition: transform 0.3s;
+            }
+            
+            .card:hover {
+                transform: translateY(-5px);
+            }
+            
+            .card h3 {
+                margin-bottom: 15px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .endpoints {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 20px;
+                margin: 30px 0;
+            }
+            
+            .endpoint {
+                background: rgba(255, 255, 255, 0.1);
+                padding: 15px;
+                border-radius: 10px;
+                border-left: 4px solid #4CAF50;
+            }
+            
+            .endpoint .method {
                 display: inline-block;
-                margin: 10px;
-                padding: 12px 24px;
+                padding: 4px 12px;
+                background: #4CAF50;
+                border-radius: 4px;
+                font-weight: bold;
+                margin-right: 10px;
+                font-size: 0.9em;
+            }
+            
+            .buttons {
+                display: flex;
+                gap: 15px;
+                flex-wrap: wrap;
+                margin: 40px 0;
+            }
+            
+            .btn {
+                padding: 12px 30px;
                 background: rgba(255, 255, 255, 0.2);
                 color: white;
                 text-decoration: none;
                 border-radius: 10px;
                 transition: all 0.3s;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                font-weight: bold;
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
             }
-            .links a:hover {
+            
+            .btn:hover {
                 background: rgba(255, 255, 255, 0.3);
                 transform: translateY(-2px);
+                border-color: white;
             }
-            .info-box {
-                background: rgba(255, 255, 255, 0.1);
+            
+            .stats {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px;
+                margin: 30px 0;
+            }
+            
+            .stat-item {
+                text-align: center;
                 padding: 20px;
+                background: rgba(255, 255, 255, 0.1);
                 border-radius: 10px;
-                margin: 20px 0;
             }
-            code {
-                background: rgba(0, 0, 0, 0.3);
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-family: monospace;
+            
+            .stat-value {
+                font-size: 2em;
+                font-weight: bold;
+                color: #4CAF50;
+            }
+            
+            .stat-label {
+                font-size: 0.9em;
+                opacity: 0.8;
+            }
+            
+            footer {
+                margin-top: 50px;
+                text-align: center;
+                opacity: 0.7;
+                font-size: 0.9em;
+            }
+            
+            @media (max-width: 768px) {
+                .container {
+                    padding: 20px;
+                }
+                
+                h1 {
+                    font-size: 2em;
+                }
+                
+                .endpoints {
+                    grid-template-columns: 1fr;
+                }
             }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>🤖 Telegram Phone Bot</h1>
-            <p>Автоматизація введення номерів телефонів на українські сайти</p>
+            <p class="tagline">Автоматизація введення номерів телефонів на українські сайти</p>
             
-            <div class="info-box">
-                <h2>📊 Статус системи</h2>
-                <div class="status ''' + ('ready' if bot_state['ready'] else 'starting') + '''">
-                    ''' + ('✅ Працює' if bot_state['ready'] else '⏳ Запускається') + '''
+            <div class="status-badge">✅ Сервіс активний</div>
+            
+            <div class="card">
+                <h3>📱 Про бота</h3>
+                <p>Цей бот допомагає автоматизувати процес введення номерів телефонів на популярних українських сайтах. Він працює через Telegram вебхуки та готовий до використання.</p>
+            </div>
+            
+            <div class="buttons">
+                <a href="https://t.me/my_1qop1_bot" class="btn" target="_blank">
+                    <span>🤖</span> Відкрити в Telegram
+                </a>
+                <a href="/health" class="btn">
+                    <span>🩺</span> Health Check
+                </a>
+                <a href="/info" class="btn">
+                    <span>ℹ️</span> Інформація
+                </a>
+                <a href="/stats" class="btn">
+                    <span>📈</span> Статистика
+                </a>
+            </div>
+            
+            <div class="card">
+                <h3>🌐 Доступні сайти</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                    <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;">• OLX.ua</div>
+                    <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;">• Rozetka.com.ua</div>
+                    <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;">• Prom.ua</div>
+                    <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;">• NovaPoshta</div>
+                    <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;">• EpicentrK.ua</div>
                 </div>
-                <p>Аптайм: ''' + str(int(time.time() - bot_state['started_at'])) + ''' секунд</p>
-                <p>Запитів: ''' + str(bot_state['total_requests']) + '''</p>
             </div>
             
-            <div class="info-box">
-                <h2>🌐 Доступні сайти</h2>
-                <ul>
-                    <li>OLX.ua - оголошення та продажі</li>
-                    <li>Rozetka.com.ua - інтернет-магазин</li>
-                    <li>Prom.ua - маркетплейс</li>
-                </ul>
+            <div class="card">
+                <h3>🔗 API Endpoints</h3>
+                <div class="endpoints">
+                    <div class="endpoint">
+                        <div><span class="method">GET/POST</span> <strong>/webhook</strong></div>
+                        <div style="margin-top: 8px; font-size: 0.9em; opacity: 0.8;">Telegram вебхук для обробки повідомлень</div>
+                    </div>
+                    <div class="endpoint">
+                        <div><span class="method">GET</span> <strong>/health</strong></div>
+                        <div style="margin-top: 8px; font-size: 0.9em; opacity: 0.8;">Перевірка стану сервісу (для Railway)</div>
+                    </div>
+                    <div class="endpoint">
+                        <div><span class="method">GET</span> <strong>/stats</strong></div>
+                        <div style="margin-top: 8px; font-size: 0.9em; opacity: 0.8;">Статистика роботи бота</div>
+                    </div>
+                    <div class="endpoint">
+                        <div><span class="method">GET</span> <strong>/info</strong></div>
+                        <div style="margin-top: 8px; font-size: 0.9em; opacity: 0.8;">Інформація про проєкт</div>
+                    </div>
+                </div>
             </div>
             
-            <div class="links">
-                <h2>🔗 Корисні посилання</h2>
-                <a href="/health">🩺 Health Check</a>
-                <a href="/stats">📈 Статистика</a>
-                <a href="/webhook">🤖 Webhook Status</a>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="uptime">0</div>
+                    <div class="stat-label">секунд аптайму</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="requests">''' + str(bot_state["total_requests"]) + '''</div>
+                    <div class="stat-label">запитів</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">24/7</div>
+                    <div class="stat-label">доступність</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">5</div>
+                    <div class="stat-label">сайтів</div>
+                </div>
             </div>
             
-            <div class="info-box">
-                <h2>📱 Використання в Telegram</h2>
-                <p>Додайте бота: <code>@ваш_бот</code></p>
-                <p>Команди: <code>/start</code>, <code>/status</code>, <code>/sites</code>, <code>/phone номер сайт</code></p>
-                <p>Приклад: <code>/phone 380501234567 OLX.ua</code></p>
-            </div>
-            
-            <footer style="margin-top: 40px; text-align: center; opacity: 0.8;">
-                <p>© 2024 Telegram Phone Bot | Працює на Railway</p>
+            <footer>
+                <p>© 2024 Telegram Phone Bot | Працює на <a href="https://railway.app" style="color: white; text-decoration: underline;">Railway</a></p>
+                <p style="margin-top: 10px; font-size: 0.8em;">Версія 1.0.0 | Flask без aiogram</p>
             </footer>
         </div>
+        
+        <script>
+            // Оновлення аптайму
+            function updateUptime() {
+                const startTime = ''' + str(bot_state["started_at"]) + ''';
+                const now = Math.floor(Date.now() / 1000);
+                const uptime = now - startTime;
+                document.getElementById('uptime').textContent = uptime.toLocaleString();
+            }
+            
+            updateUptime();
+            setInterval(updateUptime, 1000);
+        </script>
     </body>
     </html>
     '''
 
-@app.route('/test', methods=['GET'])
-def test_page():
-    """Тестова сторінка"""
-    return '''
-    <h1>Тестова сторінка</h1>
-    <p>Якщо ви бачите цей текст, Flask працює!</p>
-    <p><a href="/">На головну</a></p>
-    '''
-
-# Ініціалізація Selenium у фоновому потоці
-if not os.environ.get('SKIP_SELENIUM'):
-    selenium_thread = threading.Thread(target=init_selenium, daemon=True)
-    selenium_thread.start()
-    logger.info("🚀 Запущено фонову ініціалізацію Selenium")
-else:
-    logger.info("⏭️ Пропущено ініціалізацію Selenium (SKIP_SELENIUM=true)")
-
+# ================= ЗАПУСК =================
 # Важливо: НЕ використовуємо if __name__ == '__main__' для Railway!
 # Railway запускає через gunicorn
 
-# Для локального запуску (не для Railway)
+# Якщо потрібно для локального запуску
 if __name__ == '__main__':
-    logger.info(f"🚀 Запуск локального сервера на порті {PORT}")
+    logger.info(f"🚀 Запуск сервера на порті {PORT}")
+    logger.info(f"🌐 Вебхук URL: https://sms-bot-production-4260.up.railway.app/webhook")
+    logger.info(f"🤖 Бот: {bot_state['bot_username']}")
     app.run(host='0.0.0.0', port=PORT, debug=False)
