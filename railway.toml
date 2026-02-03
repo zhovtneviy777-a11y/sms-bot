@@ -2,7 +2,7 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 main:app"
+startCommand = "python main.py"
 healthcheckPath = "/health"
 
 [deploy.healthcheck]
@@ -15,13 +15,11 @@ failureThreshold = 3
 
 [deploy.service]
 port = 8000
-memory = 512
-cpu = 0.5
 
 [variables]
 PYTHONUNBUFFERED = "1"
 PORT = "8000"
+SECRET_KEY = "railway-secret-key-change-this-123"
+ADMIN_PASSWORD = "railway-admin-pass-123"
 FLASK_ENV = "production"
-SECRET_KEY = "change-this-in-production-secret-key"
-ADMIN_PASSWORD = "your-admin-password-here"
 DEBUG = "false"
