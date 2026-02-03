@@ -3,7 +3,8 @@ from config import BOT_TOKEN
 import os
 
 # Отримуємо URL з змінних середовища або використовуємо за замовчуванням
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://ваш-додаток.onrender.com/webhook")
+RAILWAY_URL = "https://sms-bot-production-4260.up.railway.app"
+WEBHOOK_URL = f"{RAILWAY_URL}/webhook"
 
 print("🔄 Налаштування вебхука для Telegram...")
 print(f"🤖 Токен: {BOT_TOKEN[:10]}...")
