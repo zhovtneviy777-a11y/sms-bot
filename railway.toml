@@ -3,9 +3,9 @@ builder = "dockerfile"
 
 [deploy]
 startCommand = "python main.py"
-# Видалили healthcheck поки що
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10
+healthcheckPath = "/health"
+healthcheckTimeout = 10
 
 [variables]
+PORT = "8080"
 PYTHONUNBUFFERED = "1"
