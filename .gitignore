@@ -1,8 +1,9 @@
-# .gitignore
-# Environment variables
+# Environment
 .env
 .env.local
-.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Python
 __pycache__/
@@ -26,10 +27,14 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
+# Virtual Environments
 venv/
 env/
 ENV/
+
+# Flask
+instance/
+.webassets-cache
 
 # Logs
 *.log
@@ -48,3 +53,10 @@ Thumbs.db
 # Docker
 Dockerfile
 docker-compose.yml
+
+# Railway
+railway.toml
+
+# Selenium cache
+.webdriver/
+.chromedriver-*
