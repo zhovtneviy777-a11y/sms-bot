@@ -1,18 +1,22 @@
 version: '3.8'
 
 services:
-  app:
+  web:
     build: .
+    container_name: sms-bot-web
     ports:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
       - PORT=8000
+      - FLASK_ENV=production
+      - SECRET_KEY=production-secret-key-change-me
+      - ADMIN_PASSWORD=change-this-password
     volumes:
-      - .:/app
-    # Збільшуємо ресурси для Chrome
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1.0'
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
