@@ -1,25 +1,27 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "./Dockerfile"
+builder = "NIXPACKS"
 
 [deploy]
-startCommand = "python main.py"
+startCommand = "gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 main:app"
 healthcheckPath = "/health"
 
 [deploy.healthcheck]
 path = "/health"
-initialDelay = 60
-timeout = 30
-period = 15
+initialDelay = 30
+timeout = 10
+period = 30
 successThreshold = 1
-failureThreshold = 5
+failureThreshold = 3
 
 [deploy.service]
 port = 8000
+memory = 512
+cpu = 0.5
 
 [variables]
 PYTHONUNBUFFERED = "1"
 PORT = "8000"
-# Додатково для Selenium
-DISPLAY = ":99"
-CHROME_BIN = "/usr/bin/google-chrome"
+FLASK_ENV = "production"
+SECRET_KEY = "change-this-in-production-secret-key"
+ADMIN_PASSWORD = "your-admin-password-here"
+DEBUG = "false"
