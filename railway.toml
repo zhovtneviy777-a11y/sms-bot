@@ -2,21 +2,17 @@
 builder = "DOCKERFILE"
 dockerfilePath = "./Dockerfile"
 
-[build.args]
-PYTHON_VERSION = "3.11"
-
 [deploy]
 startCommand = "python main.py"
 healthcheckPath = "/health"
-healthcheckTimeout = 60
 
 [deploy.healthcheck]
 path = "/health"
-initialDelay = 30
-timeout = 10
-period = 10
+initialDelay = 120  # ⚠️ ДУЖЕ ВАЖЛИВО: 120 секунд для Selenium!
+timeout = 30
+period = 15
 successThreshold = 1
-failureThreshold = 3
+failureThreshold = 5
 
 [deploy.service]
 port = 8000
