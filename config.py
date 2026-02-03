@@ -5,10 +5,11 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    print("❌ ПОМИЛКА: BOT_TOKEN не знайдено!")
+    print("❌ ПОМИЛКА: BOT_TOKEN не знайдено в .env файлі!")
     exit(1)
 
-print(f"✅ Config завантажено. Бот: {BOT_TOKEN[:10]}...")
+# НЕ ВИВОДІТЬ ТОКЕН У LOGS!
+print("✅ Config завантажено")
 
 SITES_CONFIG = {
     "OLX.ua": {
