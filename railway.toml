@@ -8,7 +8,7 @@ healthcheckPath = "/health"
 
 [deploy.healthcheck]
 path = "/health"
-initialDelay = 120  # ⚠️ ДУЖЕ ВАЖЛИВО: 120 секунд для Selenium!
+initialDelay = 60
 timeout = 30
 period = 15
 successThreshold = 1
@@ -20,3 +20,6 @@ port = 8000
 [variables]
 PYTHONUNBUFFERED = "1"
 PORT = "8000"
+# Додатково для Selenium
+DISPLAY = ":99"
+CHROME_BIN = "/usr/bin/google-chrome"
