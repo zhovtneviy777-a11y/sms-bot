@@ -1,154 +1,230 @@
 # utils.py
 import logging
-import re
 import asyncio
-from typing import Optional, Tuple
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
-import chromedriver_autoinstaller
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-def setup_logging():
-    """Налаштування логування"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler('bot.log', encoding='utf-8')
-        ]
-    )
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def validate_phone_number(phone: str) -> bool:
-    """Валідація номера телефону"""
-    pattern = r'^\+380\d{9}$'
-    return bool(re.match(pattern, phone))
-
-def create_selenium_driver() -> Optional[webdriver.Chrome]:
+def create_driver():
     """Створення Selenium драйвера"""
     try:
-        # Автоматичне встановлення ChromeDriver
-        chromedriver_autoinstaller.install()
-        
-        # Налаштування опцій
         chrome_options = Options()
-        
-        # Основні опції
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         
-        # Додаткові опції для обходу блокувань
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        # User-Agent
-        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        
-        # Вимкнення вебдрайвер флагу
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        
-        # Створення драйвера
-        driver = webdriver.Chrome(options=chrome_options)
-        
-        # Виконання скрипта для приховування автоматизації
-        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        # Автоматичне встановлення ChromeDriver
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
         
         return driver
-        
     except Exception as e:
-        logging.error(f"Помилка створення драйвера: {e}")
+        logger.error(f"Помилка створення драйвера: {e}")
         return None
 
-async def submit_phone_to_site(site_config: dict, phone_number: str) -> bool:
-    """Відправка номера телефону на сайт"""
+async def submit_to_olx(phone_number):
+    """Введення номера на OLX"""
     driver = None
     try:
-        # Створюємо драйвер
-        driver = create_selenium_driver()
+        driver = create_driver()
         if not driver:
             return False
         
-        # Відкриваємо сторінку
-        driver.get(site_config["url"])
+        driver.get("https://www.olx.ua/uk/")
         
-        # Чекаємо завантаження
-        await asyncio.sleep(2)
+        # Шукаємо кнопку входу
+        login_btn = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-cy='login-link']"))
+        )
+        login_btn.click()
         
-        # Пошук поля для телефону
-        phone_input = None
-        for selector in site_config["phone_selectors"]:
-            try:
-                phone_input = WebDriverWait(driver, site_config["timeout"]).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                )
-                if phone_input:
-                    break
-            except:
-                continue
-        
-        if not phone_input:
-            logging.error(f"Не знайдено поле для телефону на {site_config['url']}")
-            return False
-        
-        # Введення номера
+        # Вводимо номер
+        phone_input = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='tel']"))
+        )
         phone_input.clear()
         phone_input.send_keys(phone_number)
         
-        # Пошук кнопки відправки
-        submit_button = None
-        for selector in site_config["submit_selectors"]:
-            try:
-                submit_button = driver.find_element(By.CSS_SELECTOR, selector)
-                if submit_button and submit_button.is_displayed() and submit_button.is_enabled():
-                    break
-                else:
-                    submit_button = None
-            except:
-                continue
+        # Кнопка "Далі"
+        next_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+        next_btn.click()
         
-        # Клік по кнопці або відправка форми
-        if submit_button:
-            submit_button.click()
-        else:
-            # Спробуємо відправити форму
-            try:
-                phone_input.submit()
-            except:
-                # Шукаємо будь-яку кнопку на сторінці
-                buttons = driver.find_elements(By.TAG_NAME, "button")
-                for button in buttons:
-                    if button.is_displayed() and button.is_enabled():
-                        button.click()
-                        break
-        
-        # Чекаємо трохи
         await asyncio.sleep(3)
-        
-        # Перевіряємо успішність
-        # Тут можна додати перевірку URL або елементів на сторінці
-        
+        logger.info(f"✅ OLX: номер {phone_number} введено")
         return True
         
-    except TimeoutException:
-        logging.error(f"Таймаут на сайті {site_config['url']}")
-        return False
-    except NoSuchElementException:
-        logging.error(f"Елемент не знайдено на {site_config['url']}")
-        return False
-    except WebDriverException as e:
-        logging.error(f"Помилка WebDriver на {site_config['url']}: {e}")
-        return False
     except Exception as e:
-        logging.error(f"Загальна помилка на {site_config['url']}: {e}", exc_info=True)
+        logger.error(f"❌ OLX помилка: {e}")
         return False
     finally:
         if driver:
             driver.quit()
+
+async def submit_to_rozetka(phone_number):
+    """Введення номера на Rozetka"""
+    driver = None
+    try:
+        driver = create_driver()
+        if not driver:
+            return False
+        
+        driver.get("https://rozetka.com.ua/")
+        
+        # Кнопка входу
+        login_btn = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".header-actions__button--user"))
+        )
+        login_btn.click()
+        
+        # Поле для телефону
+        phone_input = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='tel']"))
+        )
+        phone_input.clear()
+        phone_input.send_keys(phone_number)
+        
+        # Кнопка "Увійти"
+        submit_btn = driver.find_element(By.CSS_SELECTOR, "button.auth-modal__submit")
+        submit_btn.click()
+        
+        await asyncio.sleep(3)
+        logger.info(f"✅ Rozetka: номер {phone_number} введено")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Rozetka помилка: {e}")
+        return False
+    finally:
+        if driver:
+            driver.quit()
+
+async def submit_to_prom(phone_number):
+    """Введення номера на Prom.ua"""
+    driver = None
+    try:
+        driver = create_driver()
+        if not driver:
+            return False
+        
+        driver.get("https://prom.ua/")
+        
+        # Кнопка входу
+        login_btn = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-qaid='auth_link']"))
+        )
+        login_btn.click()
+        
+        # Введення номера
+        phone_input = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='phone']"))
+        )
+        phone_input.clear()
+        phone_input.send_keys(phone_number)
+        
+        # Кнопка "Продовжити"
+        continue_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+        continue_btn.click()
+        
+        await asyncio.sleep(3)
+        logger.info(f"✅ Prom.ua: номер {phone_number} введено")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Prom.ua помилка: {e}")
+        return False
+    finally:
+        if driver:
+            driver.quit()
+
+async def submit_to_nova_poshta(phone_number):
+    """Введення номера на Nova Poshta"""
+    driver = None
+    try:
+        driver = create_driver()
+        if not driver:
+            return False
+        
+        driver.get("https://novaposhta.ua/")
+        
+        # Кнопка "Особистий кабінет"
+        cabinet_btn = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".personal-office"))
+        )
+        cabinet_btn.click()
+        
+        # Поле для телефону
+        phone_input = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='tel']"))
+        )
+        phone_input.clear()
+        phone_input.send_keys(phone_number)
+        
+        await asyncio.sleep(3)
+        logger.info(f"✅ Nova Poshta: номер {phone_number} введено")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Nova Poshta помилка: {e}")
+        return False
+    finally:
+        if driver:
+            driver.quit()
+
+async def submit_to_epicentr(phone_number):
+    """Введення номера на Epicentr"""
+    driver = None
+    try:
+        driver = create_driver()
+        if not driver:
+            return False
+        
+        driver.get("https://epicentrk.ua/")
+        
+        # Кнопка входу
+        login_btn = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".header__login"))
+        )
+        login_btn.click()
+        
+        # Поле для телефону
+        phone_input = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='tel']"))
+        )
+        phone_input.clear()
+        phone_input.send_keys(phone_number)
+        
+        # Кнопка "Увійти"
+        submit_btn = driver.find_element(By.CSS_SELECTOR, ".auth-form__submit")
+        submit_btn.click()
+        
+        await asyncio.sleep(3)
+        logger.info(f"✅ Epicentr: номер {phone_number} введено")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Epicentr помилка: {e}")
+        return False
+    finally:
+        if driver:
+            driver.quit()
+
+async def process_all_sites(phone_number):
+    """Обробка номера на всіх сайтах"""
+    results = {
+        "OLX.ua": await submit_to_olx(phone_number),
+        "Rozetka.com.ua": await submit_to_rozetka(phone_number),
+        "Prom.ua": await submit_to_prom(phone_number),
+        "NovaPoshta": await submit_to_nova_poshta(phone_number),
+        "EpicentrK.ua": await submit_to_epicentr(phone_number)
+    }
+    return results
