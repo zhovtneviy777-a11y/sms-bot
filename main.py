@@ -108,8 +108,3 @@ def health():
         "uptime": int(time.time() - stats["started_at"]),
         "requests": stats["requests"]
     })
-
-if __name__ == '__main__':
-    port = int(os.getenv("PORT", 8000))
-    print(f"🚀 Запуск на Railway (порт {port})")
-    app.run(host='0.0.0.0', port=port)
