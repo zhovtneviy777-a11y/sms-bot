@@ -1,18 +1,22 @@
 import requests
+from config import BOT_TOKEN
+import os
 
-# Замініть на ваш токен
-BOT_TOKEN = "6543217890:AAHdGvP9bQwVcXzZYL8kKmNt8rQpLmNoJKl"
-WEBHOOK_URL = "https://sms-bot-production-4260.up.railway.app/webhook"
+# Отримуємо URL з змінних середовища або використовуємо за замовчуванням
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://ваш-додаток.onrender.com/webhook")
 
-print("Setting webhook...")
+print("🔄 Налаштування вебхука для Telegram...")
+print(f"🤖 Токен: {BOT_TOKEN[:10]}...")
+print(f"🌐 URL: {WEBHOOK_URL}")
+
 response = requests.post(
     f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
     json={
         "url": WEBHOOK_URL,
         "drop_pending_updates": True,
-        "allowed_updates": ["message", "callback_query"]
+        "allowed_updates": ["message"]
     }
 )
 
-print(f"Status: {response.status_code}")
-print(f"Response: {response.json()}")
+print(f"📊 Статус: {response.status_code}")
+print(f"📄 Відповідь: {response.json()}")
