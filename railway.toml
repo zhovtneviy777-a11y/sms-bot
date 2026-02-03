@@ -19,7 +19,5 @@ port = 8000
 [variables]
 PYTHONUNBUFFERED = "1"
 PORT = "8000"
-SECRET_KEY = "railway-secret-key-change-this-123"
-ADMIN_PASSWORD = "railway-admin-pass-123"
-FLASK_ENV = "production"
-DEBUG = "false"
+SECRET_KEY = "ваш-секретний-ключ-тут"
+ADMIN_PASSWORD = "ваш-пароль-тут"
